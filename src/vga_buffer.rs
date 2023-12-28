@@ -1,4 +1,4 @@
-use core::fmt::{Write, Result};
+use core::fmt::{Write, Result, Arguments};
 use volatile::Volatile;
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -133,3 +133,21 @@ impl Write for Writer {
     }
 }
 
+
+// -----------------------------------------------------------------
+
+#[macro_export]
+macro_rules! print {
+    ($ ($arg:tt)*) => ($crate::vga_buffer::_print (format_args !($ ($arg)*)));
+}
+
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print !("\n"));
+    ($ ($args:tt)*) => ($crate::print !("{}\n", format_args !($ ($args)*)));
+}
+
+#[doc (hidden)]
+pub fn _print (args: Arguments) {
+    WRITER.lock ().write_fmt (args).unwrap ();
+}
