@@ -1,11 +1,11 @@
-use core::fmt::{Write, Result, Arguments};
-use volatile::Volatile;
+use core::fmt::{Arguments, Result, Write};
 use lazy_static::lazy_static;
 use spin::Mutex;
+use volatile::Volatile;
 
-#[allow (dead_code)]
-#[derive (Debug, Clone, Copy, PartialEq, Eq)]
-#[repr (u8)]
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 
 pub enum Color {
     Black = 0,
@@ -26,19 +26,17 @@ pub enum Color {
     White = 15,
 }
 
-
-#[derive (Debug, Clone, Copy, PartialEq, Eq)]
-#[repr (transparent)]
-struct ColorCode (u8);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+struct ColorCode(u8);
 
 impl ColorCode {
-    fn new (foreground: Color, background: Color) -> ColorCode {
-        ColorCode ((background as u8) << 4 | (foreground as u8))
+    fn new(foreground: Color, background: Color) -> ColorCode {
+        ColorCode((background as u8) << 4 | (foreground as u8))
     }
 }
 
-
-#[derive (Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 struct ScreenChar {
     ascii_character: u8,
@@ -50,7 +48,7 @@ const BUFFER_WIDTH: usize = 80;
 
 #[repr(transparent)]
 struct Buffer {
-    chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT]
+    chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
 }
 
 pub struct Writer {
@@ -68,12 +66,12 @@ lazy_static! {
 }
 
 impl Writer {
-    pub fn write_byte (&mut self, byte: u8) {
+    pub fn write_byte(&mut self, byte: u8) {
         match byte {
-            b'\n' => self.new_line (),
+            b'\n' => self.new_line(),
             byte => {
                 if self.column_position >= BUFFER_WIDTH {
-                    self.new_line ();
+                    self.new_line();
                 }
 
                 let row = BUFFER_HEIGHT - 1;
@@ -90,49 +88,47 @@ impl Writer {
         }
     }
 
-    pub fn write_string (&mut self, s: &str) {
-        for byte in s.bytes () {
+    pub fn write_string(&mut self, s: &str) {
+        for byte in s.bytes() {
             match byte {
                 // printable ASCII byte or new_line
-                0x20..=0x7e | b'\n' => self.write_byte (byte),
+                0x20..=0x7e | b'\n' => self.write_byte(byte),
                 // not a part of printable ASCII range
-                _ => self.write_byte (0xfe),
+                _ => self.write_byte(0xfe),
             }
         }
     }
 
-    fn new_line (&mut self) {
+    fn new_line(&mut self) {
         for row in 1..BUFFER_HEIGHT {
             for col in 0..BUFFER_WIDTH {
-                let character = self.buffer.chars [row][col].read ();
-                self.buffer.chars [row - 1][col].write (character);
+                let character = self.buffer.chars[row][col].read();
+                self.buffer.chars[row - 1][col].write(character);
             }
         }
-            
-        self.clear_row (BUFFER_HEIGHT - 1);
+
+        self.clear_row(BUFFER_HEIGHT - 1);
         self.column_position = 0;
     }
 
-    fn clear_row (&mut self, row: usize) {
+    fn clear_row(&mut self, row: usize) {
         let blank = ScreenChar {
             ascii_character: b' ',
             color_code: self.color_code,
         };
 
         for col in 0..BUFFER_WIDTH {
-            self.buffer.chars [row][col].write (blank)
+            self.buffer.chars[row][col].write(blank)
         }
     }
 }
 
-
 impl Write for Writer {
-    fn write_str (&mut self, s: &str) -> Result {
-        self.write_string (s);
-        Ok (())
+    fn write_str(&mut self, s: &str) -> Result {
+        self.write_string(s);
+        Ok(())
     }
 }
-
 
 // -----------------------------------------------------------------
 
@@ -147,7 +143,31 @@ macro_rules! println {
     ($ ($args:tt)*) => ($crate::print !("{}\n", format_args !($ ($args)*)));
 }
 
-#[doc (hidden)]
-pub fn _print (args: Arguments) {
-    WRITER.lock ().write_fmt (args).unwrap ();
+#[doc(hidden)]
+pub fn _print(args: Arguments) {
+    WRITER.lock().write_fmt(args).unwrap();
+}
+
+// ----------------------------------------------------------------
+
+#[test_case]
+fn test_println_simple() {
+    println!("test_println_simple output");
+}
+
+#[test_case]
+fn test_println_many() {
+    for _ in 0..200 {
+        println!("test_println_many output");
+    }
+}
+
+#[test_case]
+fn test_println_output() {
+    let s = "Some test string that fits on a single line";
+    println!("{s}");
+    for (i, c) in s.chars().enumerate() {
+        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
+        assert_eq!(char::from(screen_char.ascii_character), c);
+    }
 }
